@@ -34,7 +34,7 @@ public class GameHub : Hub
     }
     
     // Player method
-    public async Task<JoinResponse> JoinRoom(string joinCode)
+    public async Task<JoinResponse> JoinRoom(string joinCode, string playerName)
     {
         var room = _roomService.GetRoomByJoinCode(joinCode);
         
@@ -47,6 +47,7 @@ public class GameHub : Hub
         var player = new Player
         {
             PlayerId = Guid.NewGuid(),
+            Name = string.IsNullOrWhiteSpace(playerName) ? "Player" : playerName.Trim(),
             ConnectionId = Context.ConnectionId,
             IsConnected = true,
             IsReady = false
@@ -73,7 +74,7 @@ public class GameHub : Hub
         // Send state snapshot to the new player
         await _gameEngine.SendStateSnapshot(room, Context.ConnectionId);
         
-        return new JoinResponse(room.RoomId, player.PlayerId);
+        return new JoinResponse(room.RoomId, player.PlayerId, player.Name);
     }
     
     public async Task SetReady(Guid roomId, bool ready)
@@ -123,7 +124,14 @@ public class GameHub : Hub
             return;
         }
         
-        var result = await _gameEngine.ProcessHit(roomId, hitId, fruitType);
+        // Get player ID from connection
+        Guid? playerId = null;
+        if (_store.TryGetPlayerIdForConnection(Context.ConnectionId, out var pid))
+        {
+            playerId = pid;
+        }
+        
+        var result = await _gameEngine.ProcessHit(roomId, hitId, fruitType, playerId);
         
         // Optionally send feedback to caller about hit result
         // (already handled by game engine broadcasts)

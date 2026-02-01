@@ -86,7 +86,7 @@ public class GameEngineService
         await StartNextOrder(room);
     }
     
-    public async Task<HitResult> ProcessHit(Guid roomId, Guid hitId, FruitType fruit)
+    public async Task<HitResult> ProcessHit(Guid roomId, Guid hitId, FruitType fruit, Guid? playerId)
     {
         var room = _store.GetRoomById(roomId);
         if (room == null) return HitResult.InvalidState;
@@ -99,9 +99,18 @@ public class GameEngineService
         if (_store.IsHitProcessed(roomId, hitId))
             return HitResult.AlreadyProcessed;
         
+        // Track player stats
+        if (playerId.HasValue && room.Players.TryGetValue(playerId.Value, out var player))
+        {
+            player.HitCount++;
+        }
+        
         // Increment submitted count
         room.CurrentOrder.Submitted[fruit]++;
         room.LastActivityAt = DateTime.UtcNow;
+        
+        // Mark hit as processed
+        _store.MarkHitProcessed(roomId, hitId);
         
         // Immediate failure check
         if (room.CurrentOrder.Submitted[fruit] > room.CurrentOrder.Required[fruit])
@@ -169,13 +178,6 @@ public class GameEngineService
                 .SendAsync("MoodChanged", moodChangedEvent);
         }
         
-        // Check for burnout
-        if (_moodCalculator.IsBurnout(room.Mood))
-        {
-            await EndGame(room, burnout: true);
-            return;
-        }
-        
         // Clear processed hits for next order
         _store.ClearProcessedHits(room.RoomId);
         
@@ -213,12 +215,25 @@ public class GameEngineService
         
         room.State = RoomState.Results;
         
+        // Calculate per-player stats
+        var totalHits = room.Players.Values.Sum(p => p.HitCount);
+        var playerStats = room.Players.Values
+            .Where(p => p.IsConnected || p.HitCount > 0) // Include players who contributed
+            .Select(p => new PlayerStats(
+                p.Name,
+                p.HitCount,
+                totalHits > 0 ? Math.Round((double)p.HitCount / totalHits * 100, 1) : 0
+            ))
+            .OrderByDescending(ps => ps.HitCount)
+            .ToArray();
+        
         var gameFinishedEvent = new GameFinishedEvent(
             room.RoomId,
             room.OrderIndex,
             room.SuccessCount,
             room.FailCount,
-            room.Mood
+            room.Mood,
+            playerStats
         );
         
         await _hubContext.Clients.Group(room.RoomId.ToString())

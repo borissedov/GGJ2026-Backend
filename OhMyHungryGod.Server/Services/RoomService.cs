@@ -6,7 +6,7 @@ namespace OhMyHungryGod.Server.Services;
 public class RoomService
 {
     private readonly InMemoryRoomStore _store;
-    private const int CountdownSeconds = 10;
+    private const int CountdownSeconds = 6;
     private const int OrderSeconds = 10;
     private const int ResultsTimeoutSeconds = 30;
     private const int RoomInactivityTimeoutMinutes = 5;
