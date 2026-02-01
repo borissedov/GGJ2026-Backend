@@ -109,9 +109,6 @@ public class GameEngineService
         room.CurrentOrder.Submitted[fruit]++;
         room.LastActivityAt = DateTime.UtcNow;
         
-        // Mark hit as processed
-        _store.MarkHitProcessed(roomId, hitId);
-        
         // Immediate failure check
         if (room.CurrentOrder.Submitted[fruit] > room.CurrentOrder.Required[fruit])
         {

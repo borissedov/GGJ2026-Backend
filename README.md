@@ -7,6 +7,8 @@
 - **SignalR WebSocket Communication**: Real-time bidirectional communication
 - **Authoritative Server**: All game logic runs on server
 - **In-Memory State**: Fast room and player management
+- **Player Name Tracking**: Players join with custom names
+- **Per-Player Statistics**: Track individual contributions and display in results
 - **Background Services**: Automatic countdown, order timeout, and room cleanup
 - **No Authentication**: GUID-based room/player identification
 
@@ -43,13 +45,13 @@ SignalR hub endpoint: `/gamehub`
 
 ## Configuration
 
-Edit `appsettings.json` to adjust game settings:
+Game settings (hardcoded in `RoomService.cs` and `GameEngineService.cs`):
 
-- `OrdersPerGame`: Number of orders per game (default: 10)
-- `OrderDurationSeconds`: Time limit per order (default: 10)
-- `CountdownDurationSeconds`: Lobby countdown (default: 10)
-- `ResultsTimeoutSeconds`: How long to show results (default: 30)
-- `RoomInactivityTimeoutMinutes`: Room cleanup timeout (default: 5)
+- `OrdersPerGame`: 10 orders per game
+- `OrderDurationSeconds`: 10 seconds per order
+- `CountdownDurationSeconds`: 6 seconds lobby countdown
+- `ResultsTimeoutSeconds`: 30 seconds before room cleanup
+- `RoomInactivityTimeoutMinutes`: 5 minutes before inactive room cleanup
 
 ## API Endpoints
 
@@ -76,8 +78,8 @@ Edit `appsettings.json` to adjust game settings:
 | `OrderTotalsUpdated` | Display | Hit processed |
 | `OrderResolved` | Both | Order success/fail |
 | `MoodChanged` | Display | Mood calculation |
-| `GameOver` | Both | Burnout occurs |
-| `GameFinished` | Both | 10 orders complete |
+| `GameOver` | Both | Early termination (not used) |
+| `GameFinished` | Both | 10 orders complete (includes player stats) |
 | `StateSnapshot` | Mobile | On join or reconnect |
 | `Error` | Both | Validation errors |
 
@@ -103,9 +105,11 @@ Configure health check endpoint: `/health`
 
 ## Game Rules
 
-- **10 orders per game**
+- **10 orders per game** (always completes all orders)
 - **10 seconds per order**
+- **6 seconds countdown** before game starts
 - **Immediate failure** if over-submitted
 - **Immediate success** if exact match
-- **Mood system**: +1 per 2 successes, -1 per failure
-- **Burnout**: Mood drops below ANGRY → game over
+- **Mood system**: +1 per 2 successes, -1 per failure (visual feedback only)
+- **Per-player tracking**: Hit counts and contribution percentages
+- **Team rating**: Final mood determines stars (Happy=3, Neutral=2, Angry=1)
