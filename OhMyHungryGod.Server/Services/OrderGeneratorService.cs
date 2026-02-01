@@ -23,15 +23,20 @@ public class OrderGeneratorService
             order.Submitted[fruit] = 0;
         }
         
-        // Randomly assign required fruits (at least one fruit type must be > 0)
+        // Randomly assign required fruits with total limit of 5
         var fruitTypes = Enum.GetValues<FruitType>().ToArray();
         var numFruitTypes = _random.Next(1, fruitTypes.Length + 1); // 1-4 different fruits
         
-        var selectedFruits = fruitTypes.OrderBy(_ => _random.Next()).Take(numFruitTypes);
+        var selectedFruits = fruitTypes.OrderBy(_ => _random.Next()).Take(numFruitTypes).ToList();
         
-        foreach (var fruit in selectedFruits)
+        // Total fruits to distribute (1-5)
+        var totalFruits = _random.Next(1, 6);
+        
+        // Distribute fruits among selected types
+        for (int i = 0; i < totalFruits; i++)
         {
-            order.Required[fruit] = _random.Next(1, 6); // 1-5 of each selected fruit
+            var randomFruit = selectedFruits[_random.Next(selectedFruits.Count)];
+            order.Required[randomFruit]++;
         }
         
         return order;
