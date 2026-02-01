@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.SignalR;
 using OhMyHungryGod.Server.Models;
 using OhMyHungryGod.Server.Models.Events;
 using OhMyHungryGod.Server.Services;
+using OhMyHungryGod.Server.State;
 
 namespace OhMyHungryGod.Server.Hubs;
 
@@ -9,13 +10,13 @@ public class GameHub : Hub
 {
     private readonly RoomService _roomService;
     private readonly GameEngineService _gameEngine;
-    private readonly Dictionary<string, Guid> _connectionToRoomId = new();
-    private readonly Dictionary<string, Guid> _connectionToPlayerId = new();
+    private readonly InMemoryRoomStore _store;
     
-    public GameHub(RoomService roomService, GameEngineService gameEngine)
+    public GameHub(RoomService roomService, GameEngineService gameEngine, InMemoryRoomStore store)
     {
         _roomService = roomService;
         _gameEngine = gameEngine;
+        _store = store;
     }
     
     // Display client method
@@ -25,7 +26,7 @@ public class GameHub : Hub
         
         // Add display connection to room group
         await Groups.AddToGroupAsync(Context.ConnectionId, room.RoomId.ToString());
-        _connectionToRoomId[Context.ConnectionId] = room.RoomId;
+        _store.MapConnectionToRoom(Context.ConnectionId, room.RoomId);
         
         room.DisplayClientId = Guid.NewGuid();
         
@@ -53,10 +54,10 @@ public class GameHub : Hub
         
         _roomService.AddPlayer(room, player);
         
-        // Add player to room group
+        // Add player to room group and track mappings
         await Groups.AddToGroupAsync(Context.ConnectionId, room.RoomId.ToString());
-        _connectionToRoomId[Context.ConnectionId] = room.RoomId;
-        _connectionToPlayerId[Context.ConnectionId] = player.PlayerId;
+        _store.MapConnectionToRoom(Context.ConnectionId, room.RoomId);
+        _store.MapConnectionToPlayer(Context.ConnectionId, player.PlayerId);
         
         // Transition to Lobby if this is the first player
         if (room.State == RoomState.Welcome)
@@ -78,14 +79,25 @@ public class GameHub : Hub
     public async Task SetReady(Guid roomId, bool ready)
     {
         var room = _roomService.GetRoomById(roomId);
-        if (room == null) return;
-        
-        if (!_connectionToPlayerId.TryGetValue(Context.ConnectionId, out var playerId))
+        if (room == null)
+        {
+            Console.WriteLine($"❌ SetReady: Room {roomId} not found");
             return;
+        }
+        
+        if (!_store.TryGetPlayerIdForConnection(Context.ConnectionId, out var playerId))
+        {
+            Console.WriteLine($"❌ SetReady: No player ID found for connection {Context.ConnectionId}");
+            return;
+        }
         
         if (!room.Players.TryGetValue(playerId, out var player))
+        {
+            Console.WriteLine($"❌ SetReady: Player {playerId} not found in room {roomId}");
             return;
+        }
         
+        Console.WriteLine($"✅ SetReady: Player {playerId} marking ready={ready}");
         var wasReady = player.IsReady;
         player.IsReady = ready;
         
@@ -94,6 +106,7 @@ public class GameHub : Hub
         // Check if we should start or cancel countdown
         if (room.State == RoomState.Lobby && ready && AreAllPlayersReady(room))
         {
+            Console.WriteLine($"🎯 All players ready! Starting countdown for room {roomId}");
             await _gameEngine.StartCountdown(room);
         }
         else if (room.State == RoomState.Countdown && (!ready || !AreAllPlayersReady(room)))
@@ -121,7 +134,7 @@ public class GameHub : Hub
         var room = _roomService.GetRoomById(roomId);
         if (room == null) return;
         
-        if (_connectionToPlayerId.TryGetValue(Context.ConnectionId, out var playerId))
+        if (_store.TryGetPlayerIdForConnection(Context.ConnectionId, out var playerId))
         {
             if (room.Players.TryGetValue(playerId, out var player))
             {
@@ -136,10 +149,9 @@ public class GameHub : Hub
         var room = _roomService.GetRoomById(roomId);
         if (room == null) return;
         
-        if (_connectionToPlayerId.TryGetValue(Context.ConnectionId, out var playerId))
+        if (_store.TryGetPlayerIdForConnection(Context.ConnectionId, out var playerId))
         {
             _roomService.RemovePlayer(room, playerId);
-            _connectionToPlayerId.Remove(Context.ConnectionId);
             
             await BroadcastRoomStateUpdate(room);
             
@@ -151,15 +163,15 @@ public class GameHub : Hub
         }
         
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId.ToString());
-        _connectionToRoomId.Remove(Context.ConnectionId);
+        _store.RemoveConnectionMappings(Context.ConnectionId);
     }
     
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        if (_connectionToRoomId.TryGetValue(Context.ConnectionId, out var roomId))
+        if (_store.TryGetRoomIdForConnection(Context.ConnectionId, out var roomId))
         {
             var room = _roomService.GetRoomById(roomId);
-            if (room != null && _connectionToPlayerId.TryGetValue(Context.ConnectionId, out var playerId))
+            if (room != null && _store.TryGetPlayerIdForConnection(Context.ConnectionId, out var playerId))
             {
                 // Mark player as disconnected but don't remove them
                 if (room.Players.TryGetValue(playerId, out var player))
@@ -177,6 +189,8 @@ public class GameHub : Hub
                 }
             }
         }
+        
+        _store.RemoveConnectionMappings(Context.ConnectionId);
         
         await base.OnDisconnectedAsync(exception);
     }

@@ -8,6 +8,8 @@ public class InMemoryRoomStore
     private readonly ConcurrentDictionary<Guid, Room> _roomsById = new();
     private readonly ConcurrentDictionary<string, Guid> _joinCodeToRoomId = new();
     private readonly ConcurrentDictionary<Guid, ConcurrentDictionary<Guid, bool>> _processedHits = new();
+    private readonly ConcurrentDictionary<string, Guid> _connectionToRoomId = new();
+    private readonly ConcurrentDictionary<string, Guid> _connectionToPlayerId = new();
     
     public Room CreateRoom(string joinCode)
     {
@@ -63,5 +65,32 @@ public class InMemoryRoomStore
         {
             hits.Clear();
         }
+    }
+    
+    // Connection mapping methods
+    public void MapConnectionToRoom(string connectionId, Guid roomId)
+    {
+        _connectionToRoomId[connectionId] = roomId;
+    }
+    
+    public void MapConnectionToPlayer(string connectionId, Guid playerId)
+    {
+        _connectionToPlayerId[connectionId] = playerId;
+    }
+    
+    public bool TryGetRoomIdForConnection(string connectionId, out Guid roomId)
+    {
+        return _connectionToRoomId.TryGetValue(connectionId, out roomId);
+    }
+    
+    public bool TryGetPlayerIdForConnection(string connectionId, out Guid playerId)
+    {
+        return _connectionToPlayerId.TryGetValue(connectionId, out playerId);
+    }
+    
+    public void RemoveConnectionMappings(string connectionId)
+    {
+        _connectionToRoomId.TryRemove(connectionId, out _);
+        _connectionToPlayerId.TryRemove(connectionId, out _);
     }
 }
